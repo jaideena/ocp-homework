@@ -1,0 +1,53 @@
+apiVersion: v1
+items:
+- kind: "BuildConfig"
+  apiVersion: "v1"
+  metadata:
+    name: "pipeline-demo"
+  spec:
+    triggers:
+          - github:
+              secret: 5Mlic4Le
+            type: GitHub
+          - generic:
+              secret: FiArdDBH
+            type: Generic
+    strategy:
+      type: "JenkinsPipeline"
+      jenkinsPipelineStrategy:
+        jenkinsfile: |
+                          node {
+                              stage ("Build")
+                                    echo '*** Build Starting ***'
+                                    openshiftBuild bldCfg: 'openshift-tasks', buildName: '', checkForTriggeredDeployments: 'false', commitID: '', namespace: '', showBuildLogs: 'true', verbose: 'true'
+                                    openshiftVerifyBuild bldCfg: 'openshift-tasks', checkForTriggeredDeployments: 'false', namespace: '', verbose: 'false'
+                                    echo '*** Build Complete ***'
+                              stage ("Deploy and Verify in Development Env")
+                                    echo '*** Deployment Starting ***'
+                                    openshiftDeploy depCfg: 'openshift-tasks', namespace: '', verbose: 'false', waitTime: ''
+                                    openshiftVerifyDeployment authToken: '', depCfg: 'openshift-tasks', namespace: '', replicaCount: '1', verbose: 'false', verifyReplicaCount: 'false', waitTime: ''
+                                    echo '*** Deployment Complete ***'
+                                    echo '*** Service Verification Starting ***'
+                                    openshiftVerifyService apiURL: 'https://openshift.default.svc.cluster.local', authToken: '', namespace: 'jdeenada-pipeline-tasks-dev', svcName: 'openshift-tasks', verbose: 'false'
+                                    echo '*** Service Verification Complete ***'
+                                    openshiftTag(srcStream: 'openshift-tasks', srcTag: 'latest', destStream: 'openshift-tasks', destTag: 'testready')   
+                             stage ('Deploy and Test in Testing Env')
+                                    echo '*** Deploy testready build in jdeenada-pipeline-tasks-test project  ***'
+                                    openshiftDeploy apiURL: 'https://openshift.default.svc.cluster.local', authToken: '', depCfg: 'openshift-tasks', namespace: 'jdeenada-pipeline-tasks-test', verbose: 'false', waitTime: ''
+                                    openshiftVerifyDeployment apiURL: 'https://openshift.default.svc.cluster.local', authToken: '', depCfg: 'openshift-tasks', namespace: 'jdeenada-pipeline-tasks-test', replicaCount: '1', verbose: 'false', verifyReplicaCount: 'false', waitTime: '10'
+                                    sh 'curl http://openshift-tasks-jdeenada-pipeline-tasks-test.apps.18a3.example.opentlc.com/ | grep cats -q'
+                             stage ('Promote and Verify in Production Env')
+                                    echo '*** Waiting for Input ***'
+                                    input 'Should we deploy to Production?'
+                                    openshiftTag(srcStream: 'openshift-tasks', srcTag: 'testready', destStream: 'openshift-tasks', destTag: 'prodready')
+                                    echo '*** Deploying to Production ***'
+                                    openshiftDeploy apiURL: 'https://openshift.default.svc.cluster.local', authToken: '', depCfg: 'openshift-tasks', namespace: 'jdeenada-pipeline-tasks-prod', verbose: 'false', waitTime: ''
+                                    openshiftVerifyDeployment apiURL: 'https://openshift.default.svc.cluster.local', authToken: '', depCfg: 'openshift-tasks', namespace: 'jdeenada-pipeline-tasks-prod', replicaCount: '1', verbose: 'false', verifyReplicaCount: 'false', waitTime: '10'
+                                    sleep 10
+                                    sh 'curl http://openshift-tasks-jdeenada-pipeline-tasks-prod.apps.18a3.example.opentlc.com | grep cats -q'
+                               }
+
+            
+
+kind: List
+metadata: {}
